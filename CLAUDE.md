@@ -391,35 +391,62 @@ Paleta replicada de IngePresupuestos para consistencia visual.
 
 ### 4. Empaquetado Linux ✅ (2026-05-22)
 
-PyInstaller onefile + windowed:
+**Build del binario:**
 ```bash
 venv/bin/pyinstaller ingeconverter.spec --noconfirm
 ```
+Genera `dist/ingeconverter` (~72 MB) standalone — sin Python ni venv en la
+máquina destino. Probado desde shell limpia.
 
-Genera `dist/ingeconverter` (~72 MB) como binario standalone que **NO**
-requiere Python ni venv en la máquina destino. Probado lanzando desde shell
-limpia (`env -u VIRTUAL_ENV -u PYTHONPATH PATH=/usr/bin:/bin ...`) — wizard
-abre y flujo completo funciona.
+**Tarball distribuible:**
+```bash
+./dist-linux.sh 0.1.0
+```
+Genera `dist/ingeconverter-v0.1.0-linux-x86_64.tar.gz` (~72 MB) con:
+- `ingeconverter` (binario)
+- `install.sh` (per-user sin sudo, o `--system` con sudo)
+- `README.txt` (instalación + requisito Docker)
+- `LICENSE.txt` (EULA: no reverse-engineering, no redistribución, no comercialización)
+- `ingeconverter.png` + `ingeconverter_256.png` (íconos hicolor)
 
-`ingeconverter.spec` versionado; `build/` y `dist/` en .gitignore.
+`install.sh` copia el binario a `~/.local/bin/`, instala íconos en
+`~/.local/share/icons/hicolor/{scalable,256x256}/apps/` y genera un
+`.desktop` con el path real al binario. Idempotente.
 
-Pendiente: AppImage (envoltorio para distribución Linux estándar), o tarball
-con README. Decidir al subir a `downloads.ingepresupuestos.com/`.
+`ingeconverter.spec`, `dist-linux.sh`, `dist-template/`, `LICENSE.txt`
+versionados; `build/` y `dist/` en .gitignore.
 
-### 5. Pendientes para llegar a v1.0
+### 5. Bridge IngePresupuestos ↔ IngeConverter — UX descarga ✅ (2026-05-22)
 
-- **AppImage** (envoltorio Linux estándar) o tarball con README. Decidir al
-  subir el binario a `downloads.ingepresupuestos.com/ingeconverter/v0.1.0/linux/`.
-- **`LocalDBBackend` Windows real** (no solo esqueleto): requiere `pyodbc` +
-  driver ODBC nativo. No probable en Linux sin Wine/VM.
+Cuando el bridge detecta que IngeConverter no está instalado, ya **no**
+muestra solo un texto con la URL — ahora emite señal específica
+`pedir_descarga(url)` que la UI maneja con un `QMessageBox` con botón
+"Abrir página de descarga" que llama a `QDesktopServices.openUrl()`.
+
+`IngeConverterBridge.esta_instalado()` también ahora verifica que el binario
+realmente exista en disco (antes solo chequeaba que `self._bin` no fuera
+`None`, falseando positivos con paths stale).
+
+`DOWNLOAD_URL` apunta a `https://ingepresupuestos.com/descargas/ingeconverter`
+(landing pendiente de armar). Desde esa landing se descargará el tarball
+alojado en `downloads.ingepresupuestos.com/ingeconverter/v0.1.0/linux/`.
+
+### 6. Pendientes para v1.0
+
+**Inmediato (manual, Marco):**
+- Subir `dist/ingeconverter-v0.1.0-linux-x86_64.tar.gz` (ya generado) a R2:
+  `downloads.ingepresupuestos.com/ingeconverter/v0.1.0/linux/`.
+- Armar la landing en `ingepresupuestos.com/descargas/ingeconverter`
+  (instrucciones Docker + botón descarga + EULA visible).
+
+**Futuro (próximas sesiones):**
+- **`LocalDBBackend` Windows real**: requiere `pyodbc` + driver ODBC.
+  No probable en Linux sin Wine/VM.
 - **Empaquetado Windows**: Inno Setup con LocalDB MSI bundleado (~340 MB).
-- **Iconografía**: el ícono de la ventana es el genérico de Qt. Crear/encargar
-  un .ico (Windows) + .png/.svg (Linux/Mac).
-- **EULA** corto que prohíba reverse-engineering (3-5 líneas).
-- **Subir el binario** a R2 y conectar la URL real al `IngeConverterBridge`
-  de IngePresupuestos (hoy es placeholder).
+- **AppImage** como alternativa al tarball (drag-to-run, integración
+  automática con escritorio).
 
-### 6. Limitaciones conocidas a comunicar al usuario
+### 7. Limitaciones conocidas a comunicar al usuario
 - SQL 7.0/2000 (versión <611) no se puede migrar directo. El backend ya lanza
   `BackupVersionTooOld` con mensaje user-facing.
 - El primer uso descarga ~2.3 GB en Linux/Mac (imagen Docker SQL Server).
