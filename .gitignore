@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+venv/
+.venv/
+env/
+
+build/
+dist/
+*.egg-info/
+
+# Samples reales no se versionan — pueden contener datos sensibles de clientes
+samples/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs locales
+*.log
+
+# Metadata local de Claude Code (no se versiona)
+.claude/
