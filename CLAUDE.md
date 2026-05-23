@@ -48,6 +48,21 @@ Decisión confirmada por Marco el 2026-05-22 tras evaluar opciones:
 3. Si lo descarga → IngePresupuestos lo invoca como subproceso pasándole el archivo S10
 4. IngeConverter genera un `.db` temporal → IngePresupuestos lo importa con `core/ingepresupuestos_db_importer.py` (que ya existe)
 
+### Visibilidad y distribución — cerrado 2026-05-22
+
+- **Repo privado** en `github.com/tuxiasumari/ingeconverter` (NO público).
+- **Código cerrado** — el reverse-engineering del schema S10 (9 bugs + queries
+  específicas + CASE de PropioPartida + cálculo de cuadrilla + fix #9 de %MO)
+  es el activo competitivo. Si PowerCost/Delphin lo ven, copian la feature
+  en su producto y desaparece la ventaja única.
+- **Distribución solo del binario** (PyInstaller-empaquetado), no del código
+  fuente. EULA del binario debería prohibir reverse-engineering (pendiente
+  redactar al empaquetar).
+- **Caveat técnico**: PyInstaller no es invencible — `pyinstxtractor` +
+  `uncompyle6` pueden recuperar el bytecode. Si en el futuro la protección
+  importa más, considerar Cython compilation del core (`s10_reader.py` +
+  `sqlite_writer.py` + `convertir.py` → `.so`/`.pyd` binarios C reales).
+
 ### Modelo comercial — cerrado 2026-05-22
 
 **IngeConverter es complemento GRATIS, sin licencia, sin límites.** Su única
@@ -361,40 +376,54 @@ Hecho — en `~/ingepresupuestos-pyside6/`:
 CLI nuevo en IngeConverter para el bridge: `--listar --json` emite array
 estructurado a stdout para parsing desde subprocess.
 
-### 3. UI del wizard standalone
-Convertir `views/wizard.py` (esqueleto actual) en wizard funcional de 3 pasos:
-- Paso 1: detectar/instalar backend (LocalDB o Docker)
-- Paso 2: seleccionar archivo S10 + restore
-- Paso 3: convertir (mostrar progress, listar presupuestos del archivo, elegir
-  cuál o todos)
+### 3. UI del wizard standalone ✅ (2026-05-22)
 
-### 3. Integración con IngePresupuestos
-En IngePresupuestos:
-- Agregar opción "Importar → .S2K / .bak (S10)" en `views/importar_view.py`
-- Detección de IngeConverter instalado (path conocido por plataforma)
-- Diálogo de descarga del complemento si falta
-- Subprocess para invocar IngeConverter cuando esté presente
-- Después del convertir, importa el `.db` con `core/ingepresupuestos_db_importer.py`
-  (que ya funciona)
+Hecho — `views/wizard.py` con 6 páginas en QStackedWidget:
+1. Intro (cards explicativos planos, sin borde)
+2. Backend check (auto-prepare con worker async)
+3. Elegir archivo (.S2K/.bak/.bkf)
+4. Selección (multi-pick con búsqueda + elegir dir destino)
+5. Conversión (progress bar + log de stderr)
+6. Resultado (lista de .db generados + "Abrir carpeta")
 
-### 4. Empaquetado
-- **Windows**: Inno Setup con LocalDB MSI bundleado (~340 MB)
-- **Linux**: AppImage liviano (~150 MB) que detecta Docker y guía la
-  instalación si falta
-- **Distribución**: subir a R2 bajo
-  `downloads.ingepresupuestos.com/ingeconverter/vX.Y.Z/<plataforma>/`
+Tres workers internos: `_PrepararWorker`, `_ListarWorker`, `_ConvertirWorker`.
+Paleta replicada de IngePresupuestos para consistencia visual.
 
-### 5. Confirmar modelo comercial
-- Marco aún tiene que decidir: gratis para todos vs upsell "Perpetua + Migración"
-- Mi voto: gratis (ver razonamiento arriba en sección de arquitectura)
+### 4. Empaquetado Linux ✅ (2026-05-22)
+
+PyInstaller onefile + windowed:
+```bash
+venv/bin/pyinstaller ingeconverter.spec --noconfirm
+```
+
+Genera `dist/ingeconverter` (~72 MB) como binario standalone que **NO**
+requiere Python ni venv en la máquina destino. Probado lanzando desde shell
+limpia (`env -u VIRTUAL_ENV -u PYTHONPATH PATH=/usr/bin:/bin ...`) — wizard
+abre y flujo completo funciona.
+
+`ingeconverter.spec` versionado; `build/` y `dist/` en .gitignore.
+
+Pendiente: AppImage (envoltorio para distribución Linux estándar), o tarball
+con README. Decidir al subir a `downloads.ingepresupuestos.com/`.
+
+### 5. Pendientes para llegar a v1.0
+
+- **AppImage** (envoltorio Linux estándar) o tarball con README. Decidir al
+  subir el binario a `downloads.ingepresupuestos.com/ingeconverter/v0.1.0/linux/`.
+- **`LocalDBBackend` Windows real** (no solo esqueleto): requiere `pyodbc` +
+  driver ODBC nativo. No probable en Linux sin Wine/VM.
+- **Empaquetado Windows**: Inno Setup con LocalDB MSI bundleado (~340 MB).
+- **Iconografía**: el ícono de la ventana es el genérico de Qt. Crear/encargar
+  un .ico (Windows) + .png/.svg (Linux/Mac).
+- **EULA** corto que prohíba reverse-engineering (3-5 líneas).
+- **Subir el binario** a R2 y conectar la URL real al `IngeConverterBridge`
+  de IngePresupuestos (hoy es placeholder).
 
 ### 6. Limitaciones conocidas a comunicar al usuario
-- SQL 7.0/2000 (versión <611) no se puede migrar directo. Mensaje user-facing
-  sugerido: "Este backup es de S10 con SQL Server 7.0 o 2000 (muy antiguo). Para
-  migrarlo necesitás abrirlo primero en una versión moderna de S10 y volver a
-  exportar el backup."
+- SQL 7.0/2000 (versión <611) no se puede migrar directo. El backend ya lanza
+  `BackupVersionTooOld` con mensaje user-facing.
 - El primer uso descarga ~2.3 GB en Linux/Mac (imagen Docker SQL Server).
-  Comunicar claramente.
+  Comunicar al usuario antes de empezar.
 
 ---
 

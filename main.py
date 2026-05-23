@@ -2,8 +2,8 @@
 
 Entry point. Abre el wizard principal.
 
-Windows-only. Requiere Microsoft SQL Server LocalDB instalado (el wizard asiste
-en la instalación la primera vez).
+Multiplataforma: usa Docker (Linux/Mac) o LocalDB (Windows) detectado por
+`core/backend.py`. El wizard asiste en la instalación si el backend falta.
 """
 from __future__ import annotations
 
