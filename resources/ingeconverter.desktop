@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=IngeConverter
+GenericName=Convertidor S10
+GenericName[es]=Convertidor S10
+Comment=Convierte bases nativas de S10 (.S2K/.bak/.bkf) al formato de IngePresupuestos
+Comment[es]=Convierte bases nativas de S10 (.S2K/.bak/.bkf) al formato de IngePresupuestos
+Exec=/home/sumaritux/ingeconverter/dist/ingeconverter
+Icon=/home/sumaritux/ingeconverter/resources/icons/ingeconverter.png
+StartupWMClass=ingeconverter
+StartupNotify=true
+Categories=Office;Engineering;Utility;
+Keywords=S10;presupuesto;ACU;S2K;BAK;BKF;convertidor;
+Terminal=false
+MimeType=application/octet-stream;

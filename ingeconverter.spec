@@ -17,7 +17,10 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[
+        ('resources/icons/ingeconverter.png', 'resources/icons'),
+        ('resources/icons/ingeconverter_256.png', 'resources/icons'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -47,4 +50,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='resources/icons/ingeconverter.ico',  # solo aplica en builds Windows
 )
