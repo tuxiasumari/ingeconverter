@@ -1,17 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec — generado 2026-05-22.
+"""PyInstaller spec — multiplataforma (Linux + Windows).
 
 Build:
-    venv/bin/pyinstaller ingeconverter.spec --noconfirm
+    Linux:   venv/bin/pyinstaller ingeconverter.spec --noconfirm
+    Windows: pyinstaller ingeconverter.spec --noconfirm
 
-Genera `dist/ingeconverter` (~72 MB) como binario standalone Linux que NO
-requiere Python ni venv en la máquina destino. Solo necesita Docker (que el
-backend instala/guía si falta).
-
-Para agregar icono, hidden imports o datas en el futuro, editar Analysis(...)
-y EXE(...) abajo.
+Linux → binario standalone onefile (~72 MB), requiere Docker.
+Windows → binario standalone onefile, requiere LocalDB + driver ODBC.
 """
+import sys
 
+_is_windows = sys.platform == 'win32'
+
+_hidden = ['pymssql']
+if _is_windows:
+    _hidden.append('pyodbc')
 
 a = Analysis(
     ['main.py'],
@@ -21,7 +24,7 @@ a = Analysis(
         ('resources/icons/ingeconverter.png', 'resources/icons'),
         ('resources/icons/ingeconverter_256.png', 'resources/icons'),
     ],
-    hiddenimports=[],
+    hiddenimports=_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -50,5 +53,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='resources/icons/ingeconverter.ico',  # solo aplica en builds Windows
+    icon='resources/icons/ingeconverter.ico',
 )

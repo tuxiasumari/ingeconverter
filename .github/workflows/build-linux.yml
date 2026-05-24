@@ -1,0 +1,80 @@
+name: Build Linux
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout codigo
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Dependencias del sistema (Qt6)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-xinerama0 libxcb-xkb1 libegl1 libgl1
+
+      - name: Instalar dependencias Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compilar con PyInstaller
+        run: pyinstaller ingeconverter.spec --noconfirm
+
+      - name: Extraer version del tag
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-dev"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Empaquetar tarball
+        run: |
+          NAME="ingeconverter-v${{ steps.ver.outputs.version }}-linux-x86_64"
+          STAGING="dist/$NAME"
+          mkdir -p "$STAGING"
+          cp dist/ingeconverter                       "$STAGING/ingeconverter"
+          cp dist-template/install.sh                 "$STAGING/install.sh"
+          cp dist-template/README.txt                 "$STAGING/README.txt"
+          cp LICENSE.txt                              "$STAGING/LICENSE.txt"
+          cp resources/icons/ingeconverter.png        "$STAGING/ingeconverter.png"
+          cp resources/icons/ingeconverter_256.png    "$STAGING/ingeconverter_256.png"
+          chmod 755 "$STAGING/ingeconverter" "$STAGING/install.sh"
+          cd dist
+          tar czf "$NAME.tar.gz" "$NAME"
+          ls -lh "$NAME.tar.gz"
+
+      - name: Subir artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ingeconverter-linux
+          path: dist/ingeconverter-v*-linux-x86_64.tar.gz
+          retention-days: 30
+
+      - name: Publicar en Releases (solo en tags)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ingeconverter-v*-linux-x86_64.tar.gz
+          generate_release_notes: true

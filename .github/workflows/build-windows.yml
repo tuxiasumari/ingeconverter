@@ -1,0 +1,126 @@
+name: Build Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout codigo
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compilar con PyInstaller
+        shell: bash
+        run: pyinstaller ingeconverter.spec --noconfirm
+
+      - name: Listar resultado
+        shell: bash
+        run: |
+          ls -la dist/
+          # En Windows el spec genera un solo .exe (onefile)
+          ls -lh dist/ingeconverter.exe 2>/dev/null || ls -lh dist/ingeconverter/ 2>/dev/null
+
+      - name: Incluir README en el bundle
+        shell: bash
+        run: |
+          mkdir -p dist/ingeconverter-win
+          cp dist/ingeconverter.exe dist/ingeconverter-win/ 2>/dev/null || cp -r dist/ingeconverter/* dist/ingeconverter-win/ 2>/dev/null
+          cat > dist/ingeconverter-win/LEEME.txt <<'EOF'
+          IngeConverter para Windows
+
+          Recomendado: usar el INSTALADOR (ingeconverter-setup-vX.Y.Z.exe).
+          Este .zip es solo para usuarios tecnicos que prefieran version portable.
+
+          === Requisitos ===
+
+          1. SQL Server LocalDB (se instala automaticamente con el instalador)
+          2. Driver ODBC de SQL Server (incluido con LocalDB)
+
+          === Modo portable (este .zip) ===
+
+          1. Descomprime esta carpeta donde quieras
+          2. Doble click en ingeconverter.exe
+          3. Si Windows muestra "Windows protegio tu PC":
+             "Mas informacion" -> "Ejecutar de todas formas"
+
+          === Uso recomendado ===
+
+          IngeConverter se usa desde IngePresupuestos:
+            Archivo -> Importar -> S10 (.S2K)
+
+          Tambien funciona standalone como wizard grafico.
+
+          Soporte: https://ingepresupuestos.com
+          EOF
+
+      - name: Crear ZIP portable
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/ingeconverter-win -DestinationPath dist/ingeconverter-windows.zip
+
+      - name: Extraer version del tag
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-dev"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Compilar instalador con Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-Not (Test-Path $iscc)) {
+            $iscc = "C:\Program Files\Inno Setup 6\ISCC.exe"
+          }
+          if (-Not (Test-Path $iscc)) {
+            Write-Error "Inno Setup no encontrado"
+            exit 1
+          }
+          & $iscc "/DMyAppVersion=${{ steps.ver.outputs.version }}" "installer\ingeconverter.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Listar archivos generados
+        shell: bash
+        run: ls -lh dist/
+
+      - name: Subir artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ingeconverter-windows
+          path: |
+            dist/ingeconverter-windows.zip
+            dist/ingeconverter-setup-v*.exe
+          retention-days: 30
+
+      - name: Publicar en Releases (solo en tags)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/ingeconverter-windows.zip
+            dist/ingeconverter-setup-v*.exe
+          generate_release_notes: true

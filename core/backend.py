@@ -19,9 +19,11 @@ conectar / limpiar`. Factory `crear_backend()` elige según `sys.platform`.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -286,70 +288,202 @@ class LocalDBBackend(SQLServerBackend):
     """SQL Server LocalDB (nativo Windows, distribuido por Microsoft).
 
     LocalDB es una versión gratuita y embebida de SQL Server Express:
-    - Se instala con un MSI (~340 MB total con .NET incluido)
-    - Corre on-demand (no es un servicio fijo)
-    - Instance default: `(localdb)\\MSSQLLocalDB`
+    - Se instala con un MSI (~60 MB; con .NET runtime ~340 MB total bundleado)
+    - Corre on-demand (no es un servicio fijo — arranca al conectarte)
+    - Instance default: ``(localdb)\\MSSQLLocalDB``
     - Auth: Windows Integrated (no usa SA password)
 
-    NOTA: esta implementación NO está probada en Linux. Está acá para
-    permitir desarrollo Windows futuro sin reorganizar todo.
+    Conexión vía ``pyodbc`` con ``Trusted_Connection=yes`` y el driver
+    ``ODBC Driver 17 for SQL Server`` (o 18). pymssql/FreeTDS no soporta
+    bien las named pipes de LocalDB.
     """
 
     INSTANCE = r'(localdb)\MSSQLLocalDB'
 
     def __init__(self):
         self.ultima_db: Optional[str] = None
+        self._data_dir: Optional[str] = None
 
     def esta_disponible(self) -> bool:
         if sys.platform != 'win32':
             return False
-        # SqlLocalDB.exe es la utility oficial de Microsoft
         return shutil.which('SqlLocalDB.exe') is not None or \
                shutil.which('sqllocaldb') is not None
 
+    @staticmethod
+    def _find_odbc_driver() -> Optional[str]:
+        """Busca un driver ODBC de SQL Server instalado (18 preferido, 17 fallback)."""
+        try:
+            import pyodbc
+            drivers = pyodbc.drivers()
+        except (ImportError, Exception):
+            return None
+        for ver in ('18', '17', '13'):
+            name = f'ODBC Driver {ver} for SQL Server'
+            if name in drivers:
+                return name
+        for d in drivers:
+            if 'sql server' in d.lower():
+                return d
+        return None
+
     def instrucciones_instalacion(self) -> str:
-        return (
-            "Microsoft SQL Server LocalDB no está instalado.\n"
-            "Descargalo de:\n"
-            "   https://www.microsoft.com/en-us/download/details.aspx?id=104781\n"
-            "(busca 'SqlLocalDB.msi', ~60 MB; requiere .NET Framework 4.8)\n\n"
-            "Después de instalar, abrí una terminal nueva e intentá de nuevo."
+        driver = self._find_odbc_driver()
+        base = (
+            "Microsoft SQL Server LocalDB no está instalado.\n\n"
+            "Instalación:\n"
+            "1. Descarga SqlLocalDB.msi (~60 MB) de:\n"
+            "   https://learn.microsoft.com/en-us/sql/database-engine/configure-windows/sql-server-express-localdb\n"
+            "2. Ejecuta el instalador y reinicia si lo pide.\n"
+            "3. Vuelve a intentar.\n"
         )
+        if not driver:
+            base += (
+                "\nTambién necesitas el driver ODBC de SQL Server:\n"
+                "   https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server\n"
+                "   (descarga 'ODBC Driver 18 for SQL Server')\n"
+            )
+        return base
 
     def preparar(self) -> None:
         if not self.esta_disponible():
             raise BackendError(self.instrucciones_instalacion())
-        # Asegurar que la instancia default esté arrancada
-        subprocess.run(['SqlLocalDB.exe', 'start', 'MSSQLLocalDB'], check=False)
+
+        driver = self._find_odbc_driver()
+        if not driver:
+            raise BackendError(
+                "No se encontró un driver ODBC de SQL Server.\n"
+                "Descárgalo de:\n"
+                "   https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server\n"
+                "   (busca 'ODBC Driver 18 for SQL Server')"
+            )
+
+        localdb_exe = shutil.which('SqlLocalDB.exe') or 'SqlLocalDB.exe'
+        log.info("Iniciando instancia LocalDB…")
+        subprocess.run([localdb_exe, 'start', 'MSSQLLocalDB'],
+                       check=False, capture_output=True)
+
+        # Obtener el directorio de datos de la instancia para el RESTORE MOVE
+        r = subprocess.run(
+            [localdb_exe, 'info', 'MSSQLLocalDB'],
+            capture_output=True, text=True, check=False,
+        )
+        self._data_dir = None
+        if r.returncode == 0:
+            for line in r.stdout.splitlines():
+                # Buscar línea que contiene el path de la instancia
+                if 'instance pipe name' in line.lower():
+                    continue
+                stripped = line.strip()
+                if '\\' in stripped and ('AppData' in stripped or 'MSSQL' in stripped):
+                    # Ejemplo: "C:\Users\Marco\AppData\Local\Microsoft\..."
+                    # No usamos esto directamente, calculamos desde LOCALAPPDATA
+                    break
+
+        if not self._data_dir:
+            local_app = os.environ.get('LOCALAPPDATA', '')
+            if local_app:
+                candidate = os.path.join(
+                    local_app,
+                    'Microsoft', 'Microsoft SQL Server Local DB', 'Instances',
+                    'MSSQLLocalDB',
+                )
+                if os.path.isdir(candidate):
+                    self._data_dir = candidate
+            if not self._data_dir:
+                self._data_dir = tempfile.gettempdir()
+
+        # Verificar que la instancia responde
+        self._esperar_sql_listo()
+
+    def _esperar_sql_listo(self, timeout: int = 30) -> None:
+        deadline = time.time() + timeout
+        ultimo_error = ''
+        while time.time() < deadline:
+            try:
+                conn = self.conectar(database='master')
+                cur = conn.cursor()
+                cur.execute('SELECT 1')
+                cur.close()
+                conn.close()
+                return
+            except Exception as e:
+                ultimo_error = str(e)
+                time.sleep(1)
+        raise BackendError(
+            f"LocalDB no respondió en {timeout}s. Último error:\n{ultimo_error}"
+        )
 
     def restaurar(self, archivo: Path) -> str:
-        import pymssql
         archivo = Path(archivo).resolve()
         if not archivo.exists():
             raise BackendError(f"Archivo no existe: {archivo}")
 
-        # LocalDB se conecta vía named pipe — pymssql necesita la sintaxis
-        # `np:\\.\pipe\LOCALDB#...\tsql\query`. Más simple: usar el
-        # `server=(localdb)\MSSQLLocalDB` que pymssql/FreeTDS no soporta
-        # bien. Por eso en Windows típicamente se usa `pyodbc` con
-        # `Trusted_Connection=yes`. Acá dejamos un placeholder claro.
-        raise NotImplementedError(
-            "LocalDBBackend.restaurar() no está implementado todavía. "
-            "Requiere pyodbc + driver ODBC nativo (no pymssql)."
-        )
+        path_backup = str(archivo).replace("'", "''")
+
+        conn = self.conectar(database='master')
+        try:
+            files = _leer_filelist_odbc(conn, path_backup)
+            _restore_database_odbc(conn, DB_NAME, path_backup, files,
+                                   self._data_dir or tempfile.gettempdir())
+        finally:
+            conn.close()
+
+        self.ultima_db = DB_NAME
+        log.info(f"BD restaurada como {DB_NAME!r}")
+        return DB_NAME
 
     def conectar(self, database: Optional[str] = None):
-        raise NotImplementedError(
-            "LocalDBBackend.conectar() no está implementado todavía."
+        import pyodbc
+        driver = self._find_odbc_driver()
+        if not driver:
+            raise BackendError("No se encontró driver ODBC de SQL Server.")
+
+        conn_str = (
+            f"Driver={{{driver}}};"
+            f"Server={self.INSTANCE};"
+            f"Database={database or self.ultima_db or 'master'};"
+            f"Trusted_Connection=yes;"
         )
+        # Driver 18 requiere TrustServerCertificate explícito para LocalDB
+        if '18' in driver:
+            conn_str += "TrustServerCertificate=yes;"
+        return pyodbc.connect(conn_str, autocommit=True)
 
     def limpiar(self, database: Optional[str] = None) -> None:
-        pass  # No-op hasta que conectar/restaurar estén implementados.
+        db = database or self.ultima_db
+        if not db:
+            return
+        log.info(f"Eliminando BD {db!r}…")
+        try:
+            conn = self.conectar(database='master')
+            cur = conn.cursor()
+            cur.execute(
+                f"IF DB_ID('{db}') IS NOT NULL BEGIN "
+                f"ALTER DATABASE [{db}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; "
+                f"DROP DATABASE [{db}]; END"
+            )
+            conn.close()
+        except Exception as e:
+            log.warning(f"No se pudo limpiar la BD {db}: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers compartidos (RESTORE FILELISTONLY / RESTORE DATABASE)
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _check_backup_version_error(msg: str) -> None:
+    """Lanza BackupVersionTooOld si el mensaje indica SQL Server <2005."""
+    if '3169' in msg or 'older version' in msg.lower():
+        raise BackupVersionTooOld(
+            "Este backup viene de SQL Server 7.0 o 2000 (muy antiguo). "
+            "SQL Server 2022 no puede restaurarlo directamente.\n"
+            "Solución: abre el archivo en una versión moderna de S10 "
+            "(2009+) y vuelve a exportar el backup."
+        )
+
+
+# ── pymssql (Docker backend) ────────────────────────────────────────────────
 
 def _leer_filelist(conn, path_backup: str) -> list[tuple[str, str]]:
     """Retorna [(LogicalName, Type), ...] del backup.
@@ -366,14 +500,7 @@ def _leer_filelist(conn, path_backup: str) -> list[tuple[str, str]]:
         rows = cur.fetchall()
     except Exception as e:
         msg = str(e)
-        # SQL Server error 3169: backup version too old
-        if '3169' in msg or 'older version' in msg.lower():
-            raise BackupVersionTooOld(
-                "Este backup viene de SQL Server 7.0 o 2000 (muy antiguo). "
-                "SQL Server 2022 no puede restaurarlo directamente.\n"
-                "Solución: abrí el archivo en una versión moderna de S10 "
-                "(2009+) y volvé a exportar el backup."
-            ) from e
+        _check_backup_version_error(msg)
         raise BackendError(f"RESTORE FILELISTONLY falló: {msg}") from e
 
     # Columnas 0, 1, 2 = LogicalName, PhysicalName, Type
@@ -402,11 +529,48 @@ def _restore_database(conn, db_name: str, path_backup: str,
         cur.execute(sql)
     except Exception as e:
         msg = str(e)
-        if '3169' in msg or 'older version' in msg.lower():
-            raise BackupVersionTooOld(
-                "Este backup viene de SQL Server 7.0 o 2000 (muy antiguo). "
-                "SQL Server 2022 no puede restaurarlo directamente."
-            ) from e
+        _check_backup_version_error(msg)
+        raise BackendError(f"RESTORE DATABASE falló: {msg}") from e
+
+
+# ── pyodbc (LocalDB backend) ────────────────────────────────────────────────
+
+def _leer_filelist_odbc(conn, path_backup: str) -> list[tuple[str, str]]:
+    """Versión pyodbc de _leer_filelist (pyodbc usa autocommit en la conexión,
+    no en el cursor como pymssql)."""
+    cur = conn.cursor()
+    try:
+        cur.execute(f"RESTORE FILELISTONLY FROM DISK = N'{path_backup}'")
+        rows = cur.fetchall()
+    except Exception as e:
+        msg = str(e)
+        _check_backup_version_error(msg)
+        raise BackendError(f"RESTORE FILELISTONLY falló: {msg}") from e
+    return [(r[0].strip(), r[2].strip()) for r in rows]
+
+
+def _restore_database_odbc(conn, db_name: str, path_backup: str,
+                           files: list[tuple[str, str]],
+                           data_dir: str) -> None:
+    """Versión pyodbc de _restore_database. Usa paths de Windows."""
+    moves = []
+    for logical, file_type in files:
+        ext = 'ldf' if file_type == 'L' else 'mdf'
+        target = os.path.join(data_dir, f"{db_name}_{logical}.{ext}")
+        target_escaped = target.replace("'", "''")
+        moves.append(f"MOVE N'{logical}' TO N'{target_escaped}'")
+
+    sql = (
+        f"RESTORE DATABASE [{db_name}] FROM DISK = N'{path_backup}' "
+        f"WITH {', '.join(moves)}, REPLACE"
+    )
+    log.debug(f"SQL: {sql}")
+    cur = conn.cursor()
+    try:
+        cur.execute(sql)
+    except Exception as e:
+        msg = str(e)
+        _check_backup_version_error(msg)
         raise BackendError(f"RESTORE DATABASE falló: {msg}") from e
 
 
