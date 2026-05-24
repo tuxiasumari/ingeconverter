@@ -6,12 +6,12 @@ con el schema de IngePresupuestos.
 
 **Autor:** Ing. Marco Sumari Tellez
 **Iniciado:** 2026-05-22
-**Estado:** Fase 0 completada — funcional contra `.S2K` reales (samples LLAMKASUN
-y PATAPUJO). Próxima sesión: empaquetar para distribución (Fase 2).
+**Estado:** Fase 2 completada — empaquetado Linux+Windows, CI/CD, LocalDB backend,
+release v0.1.0 publicado en GitHub Actions. Próximo: probar `.exe` en Windows real.
 
 ---
 
-## Estado funcional (2026-05-22 — Fase 0 ✅)
+## Estado funcional (2026-05-23 — Fase 0 ✅ + Fase 2 ✅)
 
 - 3 módulos completos en `core/`: `s10_reader.py` + `sqlite_writer.py` + `convertir.py`
 - CLI con flags `--listar`, `--presupuesto`, `--subpresupuesto`, `--todos`, `--out`
@@ -284,49 +284,49 @@ docker start mssql-s10   # los datos persisten en el volumen mssql-s10-data
 
 ```
 ~/ingeconverter/
-├── main.py                          # Entry point (UI wizard — esqueleto, falta lógica)
-├── requirements.txt                 # PySide6, pymssql
+├── main.py                          # Entry point (UI wizard)
+├── requirements.txt                 # PySide6, pymssql, pyodbc (win32), pyinstaller
+├── ingeconverter.spec               # PyInstaller multiplataforma (onefile)
+├── release.sh                       # Bumpea tag, push → CI compila
+├── dist-linux.sh                    # Empaqueta tarball Linux local
 ├── README.md                        # Descripción público-facing
 ├── CLAUDE.md                        # ← este archivo
-├── .gitignore                       # samples/ y venv/ excluidos
+├── LICENSE.txt                      # EULA (no reverse-engineering)
+├── .gitignore                       # samples/, venv/, build/, dist/
 ├── core/
 │   ├── __init__.py
+│   ├── backend.py                   # ✅ DockerBackend (Linux) + LocalDBBackend (Windows)
 │   ├── s10_reader.py                # ✅ lee SQL Server + queries S10
 │   ├── sqlite_writer.py             # ✅ genera .db con schema IngePresupuestos
 │   └── convertir.py                 # ✅ orquestador + CLI
 ├── views/
 │   ├── __init__.py
-│   └── wizard.py                    # 🚧 UI placeholder (3 cards de pasos)
-├── resources/icons/                 # (vacío — pendiente iconografía)
+│   └── wizard.py                    # ✅ UI wizard 6 páginas + 3 workers
+├── installer/
+│   └── ingeconverter.iss            # ✅ Inno Setup (Windows installer)
+├── dist-template/
+│   ├── install.sh                   # Installer per-user Linux
+│   └── README.txt                   # README dentro del tarball
+├── .github/workflows/
+│   ├── build-linux.yml              # ✅ CI: tarball Linux, sube a Releases
+│   └── build-windows.yml            # ✅ CI: ZIP + Inno Setup .exe, sube a Releases
+├── resources/icons/
+│   ├── ingeconverter.png            # Ícono escalable
+│   ├── ingeconverter_256.png        # Ícono 256×256
+│   └── ingeconverter.ico            # Ícono Windows
 ├── docs/
-│   ├── ROADMAP.md                   # ✅ Fase 0→3 + bugs resueltos
-│   └── s10_schema_notes.md          # ✅ documentación completa del schema
-└── samples/
-    ├── ACU_PARTIDAS_AII/            # source .bkf de LLAMKASUN
-    ├── llamkasun_AII.db             # ✅ .db generado de LLAMKASUN
-    ├── LOSA SAN MARCOS AGOSTO.S2K   # ⚠ SQL 7.0, fuera de alcance
-    ├── S10 PATAPUJO JUL.S2K         # source de los 8 PATAPUJO
-    ├── patapujo_todos/
-    │   ├── 0501039_*.db             # ✅ 8 .db generados
-    │   ├── 0501040_*.db
-    │   ├── 0501041_*.db (Represa Yarabamba — el más grande)
-    │   ├── 0501042_*.db
-    │   ├── 0501043_*.db
-    │   ├── 0501044_*.db
-    │   ├── 0501045_*.db
-    │   └── 0501048_*.db (Patapujo KM 24+640 — el validado por Marco)
-    └── captura.png                  # screenshot de la UI con bug ya resuelto
+│   ├── ROADMAP.md                   # Fase 0→3 + bugs resueltos
+│   └── s10_schema_notes.md          # Documentación completa del schema S10
+└── samples/                         # (en .gitignore — no versionados)
 ```
 
 ---
 
-## Próximos pasos (Fase 2 — Empaquetado)
+## Fase 2 — Empaquetado + CI/CD (completada 2026-05-23)
 
-Pendiente para la próxima sesión:
+### 1. Abstracción de backend SQL Server ✅ (2026-05-22/23)
 
-### 1. Abstracción de backend SQL Server ✅ (2026-05-22)
-
-Hecho — `core/backend.py` con interface `SQLServerBackend` y dos impls:
+`core/backend.py` con interface `SQLServerBackend` y dos impls completas:
 
 - `DockerBackend` (Linux/Mac) — **funcional end-to-end**:
   - Gestiona container `ingeconv-mssql` con volumen `ingeconv-mssql-data`
@@ -338,23 +338,21 @@ Hecho — `core/backend.py` con interface `SQLServerBackend` y dos impls:
   - `limpiar()` hace `DROP DATABASE` pero deja el container vivo (reuso)
   - Detecta SQL Server <2005 → lanza `BackupVersionTooOld` user-facing
 
-- `LocalDBBackend` (Windows) — **esqueleto**:
-  - `esta_disponible()` detecta `SqlLocalDB.exe`
-  - `restaurar/conectar` lanzan `NotImplementedError`
-  - Pendiente: requiere `pyodbc` + driver ODBC nativo Windows (pymssql no
-    habla bien con LocalDB named pipes). Implementar al portar a Win.
+- `LocalDBBackend` (Windows) — **implementación completa** (2026-05-23):
+  - Conexión vía `pyodbc` + `Trusted_Connection=yes` (pymssql/FreeTDS no
+    soporta bien named pipes de LocalDB)
+  - Auto-detección de driver ODBC (18 preferido → 17 → 13 fallback)
+  - `TrustServerCertificate=yes` automático para Driver 18
+  - `preparar()`: arranca instancia `MSSQLLocalDB`, detecta `_data_dir`
+    desde `LOCALAPPDATA`, espera con timeout 30s
+  - `restaurar()`: usa `_leer_filelist_odbc` + `_restore_database_odbc`
+    (variantes pyodbc con autocommit en conexión, no cursor)
+  - `limpiar()`: `DROP DATABASE` con `SINGLE_USER WITH ROLLBACK IMMEDIATE`
+  - Instrucciones user-facing si falta LocalDB o driver ODBC
+  - **NO probada en Windows real** — pendiente test en dual-boot de Marco
 
 - Factory `crear_backend()` despacha según `sys.platform`.
-
-CLI nuevo modo producción:
-```bash
-venv/bin/python -m core.convertir \
-  --archivo "samples/S10 PATAPUJO JUL.S2K" \
-  --presupuesto 0501048 --out salida.db
-```
-
-El modo dev (`--server --database --password`) sigue funcionando para
-iteración rápida con BDs ya restauradas.
+- Helpers compartidos: `_check_backup_version_error()` extraída para DRY.
 
 ### 2. Integración con IngePresupuestos ✅ (2026-05-22)
 
@@ -389,62 +387,63 @@ Hecho — `views/wizard.py` con 6 páginas en QStackedWidget:
 Tres workers internos: `_PrepararWorker`, `_ListarWorker`, `_ConvertirWorker`.
 Paleta replicada de IngePresupuestos para consistencia visual.
 
-### 4. Empaquetado Linux ✅ (2026-05-22)
+### 4. Empaquetado Linux ✅ (2026-05-22) + CI ✅ (2026-05-23)
 
-**Build del binario:**
+**Build local:**
 ```bash
 venv/bin/pyinstaller ingeconverter.spec --noconfirm
+./dist-linux.sh 0.1.0   # → dist/ingeconverter-v0.1.0-linux-x86_64.tar.gz (~72 MB)
 ```
-Genera `dist/ingeconverter` (~72 MB) standalone — sin Python ni venv en la
-máquina destino. Probado desde shell limpia.
 
-**Tarball distribuible:**
-```bash
-./dist-linux.sh 0.1.0
-```
-Genera `dist/ingeconverter-v0.1.0-linux-x86_64.tar.gz` (~72 MB) con:
-- `ingeconverter` (binario)
-- `install.sh` (per-user sin sudo, o `--system` con sudo)
-- `README.txt` (instalación + requisito Docker)
-- `LICENSE.txt` (EULA: no reverse-engineering, no redistribución, no comercialización)
-- `ingeconverter.png` + `ingeconverter_256.png` (íconos hicolor)
+**CI/CD:** `.github/workflows/build-linux.yml` — compila tarball en
+`ubuntu-latest` al pushear tag `v*`. Sube a GitHub Releases automáticamente.
 
-`install.sh` copia el binario a `~/.local/bin/`, instala íconos en
-`~/.local/share/icons/hicolor/{scalable,256x256}/apps/` y genera un
-`.desktop` con el path real al binario. Idempotente.
+Tarball contiene: binario + `install.sh` + `README.txt` + `LICENSE.txt` + íconos.
+`install.sh` copia a `~/.local/bin/`, instala íconos hicolor, genera `.desktop`.
 
-`ingeconverter.spec`, `dist-linux.sh`, `dist-template/`, `LICENSE.txt`
-versionados; `build/` y `dist/` en .gitignore.
+### 4b. Empaquetado Windows ✅ (2026-05-23)
+
+**CI/CD:** `.github/workflows/build-windows.yml` — compila en `windows-latest`:
+- `ingeconverter-windows.zip` (portable)
+- `ingeconverter-setup-v0.1.0.exe` (Inno Setup, wizard español, EULA, per-user)
+
+**Inno Setup:** `installer/ingeconverter.iss` con:
+- AppId GUID fijo `{A3B7E924-...}` (NO cambiar entre versiones)
+- `PrivilegesRequired=lowest` (per-user, sin UAC — LocalDB se instala aparte)
+- Detección automática onefile vs onedir de PyInstaller
+- Idioma español, EULA de `LICENSE.txt`
+
+**`.spec` multiplataforma:** hidden imports condicionales (`pymssql` siempre,
+`pyodbc` solo en Windows). Onefile en ambas plataformas.
 
 ### 5. Bridge IngePresupuestos ↔ IngeConverter — UX descarga ✅ (2026-05-22)
 
-Cuando el bridge detecta que IngeConverter no está instalado, ya **no**
-muestra solo un texto con la URL — ahora emite señal específica
-`pedir_descarga(url)` que la UI maneja con un `QMessageBox` con botón
-"Abrir página de descarga" que llama a `QDesktopServices.openUrl()`.
+Señal `pedir_descarga(url)` → `QMessageBox` con botón "Abrir página de
+descarga" → `QDesktopServices.openUrl()`. `DOWNLOAD_URL` apunta a
+`https://ingepresupuestos.com/descargas/ingeconverter` (landing pendiente).
 
-`IngeConverterBridge.esta_instalado()` también ahora verifica que el binario
-realmente exista en disco (antes solo chequeaba que `self._bin` no fuera
-`None`, falseando positivos con paths stale).
+### 5b. Release script ✅ (2026-05-23)
 
-`DOWNLOAD_URL` apunta a `https://ingepresupuestos.com/descargas/ingeconverter`
-(landing pendiente de armar). Desde esa landing se descargará el tarball
-alojado en `downloads.ingepresupuestos.com/ingeconverter/v0.1.0/linux/`.
+`release.sh X.Y.Z` — valida semver/rama/tag, crea tag `vX.Y.Z`, push a
+origin → GitHub Actions compila Linux + Windows automáticamente.
 
-### 6. Pendientes para v1.0
+### 6. Release v0.1.0 publicado ✅ (2026-05-23)
 
-**Inmediato (manual, Marco):**
-- Subir `dist/ingeconverter-v0.1.0-linux-x86_64.tar.gz` (ya generado) a R2:
-  `downloads.ingepresupuestos.com/ingeconverter/v0.1.0/linux/`.
+Tag `v0.1.0` pusheado → GitHub Actions compilando Linux + Windows.
+Binarios en `github.com/tuxiasumari/ingeconverter/releases/tag/v0.1.0`.
+
+### 7. Pendientes para v1.0
+
+**Inmediato:**
+- **Probar `.exe` en Windows real** — Marco tiene dual-boot. Instalar
+  LocalDB + driver ODBC, probar con un `.S2K`. Usar Claude Code en Windows
+  si hay bugs que corregir.
+- Subir binarios a R2: `downloads.ingepresupuestos.com/ingeconverter/v0.1.0/`
 - Armar la landing en `ingepresupuestos.com/descargas/ingeconverter`
-  (instrucciones Docker + botón descarga + EULA visible).
 
-**Futuro (próximas sesiones):**
-- **`LocalDBBackend` Windows real**: requiere `pyodbc` + driver ODBC.
-  No probable en Linux sin Wine/VM.
-- **Empaquetado Windows**: Inno Setup con LocalDB MSI bundleado (~340 MB).
-- **AppImage** como alternativa al tarball (drag-to-run, integración
-  automática con escritorio).
+**Futuro:**
+- **AppImage Linux** como alternativa al tarball
+- **Bundlear LocalDB MSI** dentro del instalador Windows (~340 MB total)
 
 ### 7. Limitaciones conocidas a comunicar al usuario
 - SQL 7.0/2000 (versión <611) no se puede migrar directo. El backend ya lanza
@@ -460,8 +459,10 @@ alojado en `downloads.ingepresupuestos.com/ingeconverter/v0.1.0/linux/`.
    de IngePresupuestos como `core/s10_import/`. Si IngeConverter se rompe por
    un cambio de S10, IngePresupuestos sigue funcionando.
 
-2. **pymssql** en vez de `pyodbc`. Wheel binario puro Python, sin drivers ODBC
-   extras. Placeholders `%s`, no `?`. Funciona idéntico Linux/Windows.
+2. **pymssql** para Docker (Linux/Mac), **pyodbc** para LocalDB (Windows).
+   pymssql no soporta named pipes de LocalDB; pyodbc con
+   `Trusted_Connection=yes` sí. En el spec, `pyodbc` es hidden import
+   condicional solo en Windows.
 
 3. **Output `.db` SQLite con schema completo de IngePresupuestos** (no solo las
    tablas con datos). El importer espera ~25 tablas — algunas pueden estar
