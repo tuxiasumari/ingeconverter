@@ -158,20 +158,53 @@ class DockerBackend(SQLServerBackend):
     def instrucciones_instalacion(self) -> str:
         if sys.platform == 'darwin':
             return (
-                "Docker Desktop no está instalado o no está corriendo.\n"
-                "1. Descargalo de https://www.docker.com/products/docker-desktop/\n"
-                "2. Instalalo y ábrelo (debe quedar el ícono de la ballena en la barra superior).\n"
-                "3. Volvé a intentar.\n\n"
-                "(IngeConverter descargará ~2.3 GB la primera vez para SQL Server 2022.)"
+                "═══ Docker Desktop no encontrado ═══\n\n"
+                "IngeConverter necesita Docker para restaurar backups de S10.\n"
+                "Es gratis y se instala una sola vez.\n\n"
+                "PASOS:\n\n"
+                "  1. Descarga Docker Desktop de:\n"
+                "     https://www.docker.com/products/docker-desktop/\n\n"
+                "  2. Instala y abre la aplicación\n"
+                "     (debe aparecer el ícono de la ballena 🐳 arriba)\n\n"
+                "  3. Haz clic en «Reintentar» aquí abajo\n\n"
+                "NOTA: la primera conversión descarga SQL Server (~2.3 GB).\n"
+                "Las siguientes son rápidas (~20 segundos)."
+            )
+        docker_installed = shutil.which('docker') is not None
+        if docker_installed:
+            return (
+                "═══ Docker instalado pero sin permisos ═══\n\n"
+                "Docker está instalado pero tu usuario no puede usarlo.\n\n"
+                "SOLUCIÓN (abre una terminal y ejecuta):\n\n"
+                "  sudo usermod -aG docker $USER\n\n"
+                "Después CIERRA SESIÓN y vuelve a entrar (o reinicia).\n"
+                "Esto solo se hace una vez.\n\n"
+                "VERIFICAR:\n\n"
+                "  docker version\n\n"
+                "Si ves la versión del servidor, haz clic en «Reintentar»."
             )
         return (
-            "Docker no está instalado o tu usuario no tiene permisos.\n"
-            "1. Instalá Docker Engine: https://docs.docker.com/engine/install/\n"
-            "2. Agregá tu usuario al grupo docker:\n"
-            "       sudo usermod -aG docker $USER\n"
-            "   y reiniciá sesión.\n"
-            "3. Verificá que funciona:  docker version\n\n"
-            "(IngeConverter descargará ~2.3 GB la primera vez para SQL Server 2022.)"
+            "═══ Docker no encontrado ═══\n\n"
+            "IngeConverter necesita Docker para restaurar backups de S10.\n"
+            "Es gratis y se instala una sola vez.\n\n"
+            "INSTALAR (abre una terminal y ejecuta):\n\n"
+            "  Ubuntu / Debian / Linux Mint:\n"
+            "    sudo apt install docker.io\n"
+            "    sudo usermod -aG docker $USER\n\n"
+            "  Fedora:\n"
+            "    sudo dnf install docker\n"
+            "    sudo systemctl enable --now docker\n"
+            "    sudo usermod -aG docker $USER\n\n"
+            "  Arch / Manjaro:\n"
+            "    sudo pacman -S docker\n"
+            "    sudo systemctl enable --now docker\n"
+            "    sudo usermod -aG docker $USER\n\n"
+            "Después CIERRA SESIÓN y vuelve a entrar.\n\n"
+            "VERIFICAR:\n\n"
+            "  docker version\n\n"
+            "Si ves la versión, haz clic en «Reintentar».\n\n"
+            "NOTA: la primera conversión descarga SQL Server (~2.3 GB).\n"
+            "Las siguientes son rápidas (~20 segundos)."
         )
 
     def preparar(self) -> None:
@@ -329,21 +362,24 @@ class LocalDBBackend(SQLServerBackend):
 
     def instrucciones_instalacion(self) -> str:
         driver = self._find_odbc_driver()
-        base = (
-            "Microsoft SQL Server LocalDB no está instalado.\n\n"
-            "Instalación:\n"
-            "1. Descarga SqlLocalDB.msi (~60 MB) de:\n"
-            "   https://learn.microsoft.com/en-us/sql/database-engine/configure-windows/sql-server-express-localdb\n"
-            "2. Ejecuta el instalador y reinicia si lo pide.\n"
-            "3. Vuelve a intentar.\n"
+        msg = (
+            "═══ SQL Server LocalDB no encontrado ═══\n\n"
+            "IngeConverter necesita LocalDB para restaurar backups de S10.\n\n"
+            "Si usaste el INSTALADOR de IngeConverter, LocalDB debería\n"
+            "haberse instalado automáticamente. Reinicia e intenta de nuevo.\n\n"
+            "Si usaste el ZIP portable, instala manualmente:\n\n"
+            "  1. Descarga SqlLocalDB.msi (~60 MB) de:\n"
+            "     https://learn.microsoft.com/sql/database-engine/configure-windows/sql-server-express-localdb\n\n"
+            "  2. Ejecuta el MSI y reinicia si lo pide.\n\n"
         )
         if not driver:
-            base += (
-                "\nTambién necesitas el driver ODBC de SQL Server:\n"
-                "   https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server\n"
-                "   (descarga 'ODBC Driver 18 for SQL Server')\n"
+            msg += (
+                "  3. También necesitas el driver ODBC:\n"
+                "     https://learn.microsoft.com/sql/connect/odbc/download-odbc-driver-for-sql-server\n"
+                "     (elige «ODBC Driver 18 for SQL Server»)\n\n"
             )
-        return base
+        msg += "Haz clic en «Reintentar» cuando estén instalados."
+        return msg
 
     def preparar(self) -> None:
         if not self.esta_disponible():
