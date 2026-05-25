@@ -202,7 +202,7 @@ Sin esta corrección el parcial sale 100× menor (0.14 en vez de 14.26).
 
 ## Bugs encontrados y resueltos
 
-(1-9 en `docs/ROADMAP.md` con detalle técnico; 10-11 descubiertos en test Windows real)
+(1-9 en `docs/ROADMAP.md` con detalle técnico; 10-12 descubiertos en test Windows real)
 
 1. **mtftar no necesario** → SQL Server 2022 lee el .bkf nativo vía `RESTORE FROM DISK`
 2. **Wildcards 999 contaminan títulos** ("REGISTRO RESTRINGIDO") → agregar `NOT LIKE '999%'`
@@ -227,6 +227,12 @@ Sin esta corrección el parcial sale 100× menor (0.14 en vez de 14.26).
 11. **Placeholders SQL incompatibles en Windows** (2026-05-24) — `S10Reader`
     usaba `%s` (paramstyle de pymssql) en todas las queries. pyodbc espera `?`.
     Fix: `S10Reader.__init__` detecta el tipo de conexión y `_q()` convierte
+12. **Binario siempre abría GUI, ignoraba args CLI** (2026-05-24) — `main.py`
+    siempre creaba `QApplication` + `WizardPrincipal`. Cuando IngePresupuestos
+    lo invocaba como subprocess con `--archivo X --listar --json`, abría el
+    wizard en vez de ejecutar el CLI → stdout vacío → "no es JSON". Fix:
+    `_is_cli_invocation()` detecta flags CLI y despacha a `core.convertir.main()`
+    sin tocar Qt.
     `%s` → `?` automáticamente. Ambos backends funcionan transparente.
 
 ---

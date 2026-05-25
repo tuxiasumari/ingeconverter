@@ -1,6 +1,7 @@
 """IngeConverter — Convertidor S10 → IngePresupuestos.
 
-Entry point. Abre el wizard principal.
+Entry point. Si recibe args CLI (--archivo, --listar, etc.) despacha al CLI
+de `core.convertir`; si no, abre el wizard GUI.
 
 Multiplataforma: usa Docker (Linux/Mac) o LocalDB (Windows) detectado por
 `core/backend.py`. El wizard asiste en la instalación si el backend falta.
@@ -10,10 +11,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication
 
-from views.wizard import WizardPrincipal
+_CLI_FLAGS = {'--archivo', '--listar', '--todos', '--presupuesto', '--server',
+              '--database', '--password', '--out', '--json', '--subpresupuesto',
+              '--verbose', '-v'}
+
+
+def _is_cli_invocation() -> bool:
+    return any(arg in _CLI_FLAGS for arg in sys.argv[1:])
 
 
 def _resource_path(rel: str) -> Path:
@@ -27,17 +32,19 @@ def _resource_path(rel: str) -> Path:
 
 
 def main() -> int:
+    if _is_cli_invocation():
+        from core.convertir import main as cli_main
+        return cli_main()
+
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import QApplication
+    from views.wizard import WizardPrincipal
+
     app = QApplication(sys.argv)
     app.setApplicationName("IngeConverter")
     app.setOrganizationName("IngePresupuestos")
-    # Vincula la ventana con un .desktop "ingeconverter.desktop" para que
-    # GNOME/KDE muestren el ícono correcto en el dock/taskbar. Sin esto en
-    # Ubuntu (Wayland) sale el genérico de Python aunque setWindowIcon esté.
     app.setDesktopFileName("ingeconverter")
 
-    # Ícono — se setea a nivel QApplication para que aplique a TODA la app
-    # (ventanas y diálogos). Para el dock/taskbar de GNOME hace falta además
-    # el .desktop file instalado (ver `resources/ingeconverter.desktop`).
     icon_path = _resource_path("resources/icons/ingeconverter.png")
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
