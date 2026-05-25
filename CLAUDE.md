@@ -7,8 +7,9 @@ con el schema de IngePresupuestos.
 **Autor:** Ing. Marco Sumari Tellez
 **Iniciado:** 2026-05-22
 **Estado:** Fase 2 completada — empaquetado Linux+Windows, CI/CD, LocalDB backend,
-release v0.2.1 con instalador Windows que bundlea LocalDB + ODBC Driver 18.
-Windows probado OK en máquina real (2026-05-24).
+release v0.2.3 con instalador Windows que bundlea LocalDB + ODBC Driver 18.
+Windows probado OK en máquina real (2026-05-24/25). Fix Unicode cp1252 + guía
+Docker didáctica para usuarios no-técnicos (2026-05-25).
 
 ---
 
@@ -234,6 +235,14 @@ Sin esta corrección el parcial sale 100× menor (0.14 en vez de 14.26).
     `_is_cli_invocation()` detecta flags CLI y despacha a `core.convertir.main()`
     sin tocar Qt.
     `%s` → `?` automáticamente. Ambos backends funcionan transparente.
+13. **Unicode cp1252 crash en Windows** (2026-05-25) — `print(f"\n✓ Conversión
+    completa...")` usaba `✓` (`✓`) que no existe en cp1252 (encoding por
+    defecto de stdout en Windows). La conversión se completaba exitosamente
+    (el .db se escribía antes de la línea 481) pero crasheaba al imprimir el
+    mensaje de éxito → exit code ≠ 0 → IngePresupuestos lo reportaba como error.
+    Fix dual: (a) reemplazar `✓✗→` por `[OK][X]->` en todos los print/log de
+    `convertir.py`, (b) en el bridge de IngePresupuestos cambiar `text=True` por
+    `encoding='utf-8', errors='replace'` en subprocess.
 
 ---
 
@@ -443,10 +452,13 @@ Tarball contiene: binario + `install.sh` + `README.txt` + `LICENSE.txt` + ícono
 **`.spec` multiplataforma:** hidden imports condicionales (`pymssql` siempre,
 `pyodbc` solo en Windows). Onefile en ambas plataformas.
 
-**Instrucciones mejoradas (sesión 2026-05-24):**
+**Instrucciones mejoradas (sesión 2026-05-24/25):**
 - Linux: comandos específicos por distro (Ubuntu/Fedora/Arch), separa "Docker sin permisos" vs "no instalado"
 - Windows: menciona que el instalador ya debería haber instalado LocalDB
 - macOS: instrucciones paso a paso para Docker Desktop
+- **Guía didáctica para no-técnicos (2026-05-25):** reescrita explicando qué es
+  Docker, cómo abrir una terminal, qué hace cada comando, por qué cerrar sesión.
+  Tanto en `backend.py::instrucciones_instalacion()` como en `dist-template/README.txt`
 
 ### 5. Bridge IngePresupuestos ↔ IngeConverter — UX descarga ✅ (2026-05-22)
 
@@ -464,13 +476,16 @@ origin → GitHub Actions compila Linux + Windows automáticamente.
 - `v0.1.0` (2026-05-23) — primer release funcional (Linux + Windows)
 - `v0.2.0` (2026-05-24) — instalador Windows con LocalDB + ODBC Driver 18 bundleados
 - `v0.2.1` (2026-05-24) — fix bugs #10 y #11 (RESTORE pyodbc + placeholders SQL)
+- `v0.2.2` (2026-05-24) — fix bug #12 (binario siempre abría GUI, ignoraba CLI)
+- `v0.2.3` (2026-05-25) — fix bug #13 (Unicode cp1252 crash en Windows) + guía
+  Docker didáctica para usuarios no-técnicos
 
 Binarios en `github.com/tuxiasumari/ingeconverter/releases/`.
 
 ### 7. Pendientes para v1.0
 
 **Inmediato:**
-- Subir binarios a R2: `downloads.ingepresupuestos.com/ingeconverter/v0.2.1/`
+- Subir binarios a R2: `downloads.ingepresupuestos.com/ingeconverter/v0.2.3/`
 - Armar la landing en `ingepresupuestos.com/descargas/ingeconverter`
 
 **Completado:**
