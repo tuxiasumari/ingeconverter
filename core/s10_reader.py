@@ -147,6 +147,13 @@ class S10Reader:
 
     def __init__(self, conn):
         self.conn = conn
+        # pyodbc usa '?' como placeholder; pymssql usa '%s'
+        self._is_pyodbc = type(conn).__module__ == 'pyodbc'
+
+    def _q(self, sql: str) -> str:
+        if self._is_pyodbc:
+            return sql.replace('%s', '?')
+        return sql
 
     # ── Listar proyectos disponibles ─────────────────────────────────────────
 
@@ -170,14 +177,14 @@ class S10Reader:
 
     def listar_subpresupuestos(self, cod_presupuesto: str) -> list[SubpresupuestoS10]:
         cur = self.conn.cursor()
-        cur.execute("""
+        cur.execute(self._q("""
             SELECT CodSubpresupuesto, Descripcion,
                    CostoDirectoOferta1, CostoManoDeObra1, CostoMaterial1,
                    CostoEquipo1, CostoSubcontrato1
             FROM Subpresupuesto
             WHERE CodPresupuesto = %s
             ORDER BY CodSubpresupuesto
-        """, (cod_presupuesto,))
+        """), (cod_presupuesto,))
         return [
             SubpresupuestoS10(
                 cod_subpresupuesto=(r[0] or '').strip(),
@@ -207,7 +214,7 @@ class S10Reader:
         # JOINs con UbicacionGeografica para resolver el código INEI ubigeo
         # (ej. '150113') al nombre completo (ej. "Jesús María, Lima, Lima").
         # El código jerárquico es: 2 chars=departamento, 4=provincia, 6=distrito.
-        cur.execute("""
+        cur.execute(self._q("""
             SELECT
                 p.CodPresupuesto, p.Descripcion, p.Fecha, p.Plazo, p.Jornada,
                 p.CodLugar, p.CodMoneda1, p.PorcentajeGG, p.PorcentajeGG2,
@@ -223,7 +230,7 @@ class S10Reader:
             LEFT JOIN UbicacionGeografica u1
                    ON u1.CodLugar = LEFT(p.CodLugar, 2) AND u1.Nivel = 1
             WHERE p.CodPresupuesto = %s
-        """, (cod_presupuesto,))
+        """), (cod_presupuesto,))
         row = cur.fetchone()
         if row is None:
             raise ValueError(
@@ -291,7 +298,7 @@ class S10Reader:
         #   "REGISTRO RESTRINGIDO" — los títulos usan ese código pero NO deben
         #   tomar la descripcion del wildcard, deben ir al catálogo Titulo.
         # - Titulo.CodTitulo='9999999'/'9999998' son wildcards similares.
-        cur.execute("""
+        cur.execute(self._q("""
             SELECT
                 sd.Orden, sd.Nivel, sd.Tipo,
                 sd.Metrado, sd.Precio1, sd.HorasHombre,
@@ -323,7 +330,7 @@ class S10Reader:
                    ON u.CodUnidad = COALESCE(p.CodUnidad, '')
             WHERE sd.CodPresupuesto = %s AND sd.CodSubpresupuesto = %s
             ORDER BY sd.Item
-        """, (cod_presupuesto, cod_subpresupuesto))
+        """), (cod_presupuesto, cod_subpresupuesto))
 
         nodos: list[NodoArbol] = []
         for r in cur.fetchall():
@@ -357,14 +364,14 @@ class S10Reader:
     ) -> list[ACUItem]:
         """Lee TODOS los ACU items del subpresupuesto."""
         cur = self.conn.cursor()
-        cur.execute("""
+        cur.execute(self._q("""
             SELECT
                 a.CodPartida, a.PropioPartida, a.CodInsumo, a.Tipo,
                 a.Unidad, a.Cantidad, a.Precio1, a.Parcial1
             FROM PresupuestoPartidaAnalisis a
             WHERE a.CodPresupuesto = %s AND a.CodSubpresupuesto = %s
             ORDER BY a.CodPartida, a.PropioPartida, a.Tipo, a.CodInsumo
-        """, (cod_presupuesto, cod_subpresupuesto))
+        """), (cod_presupuesto, cod_subpresupuesto))
         return [
             ACUItem(
                 cod_partida=(r[0] or '').strip(),
@@ -396,7 +403,8 @@ class S10Reader:
         cur = self.conn.cursor()
         for i in range(0, len(cods_list), chunk_size):
             chunk = cods_list[i:i + chunk_size]
-            placeholders = ','.join(['%s'] * len(chunk))
+            ph = '?' if self._is_pyodbc else '%s'
+            placeholders = ','.join([ph] * len(chunk))
             cur.execute(f"""
                 SELECT
                     i.CodInsumo, i.Descripcion, i.CodUnidad,
@@ -425,11 +433,11 @@ class S10Reader:
         """Lee `PrecioParticularInsumo` — overrides de precio por proyecto.
         Devuelve dict {cod_insumo: precio_particular}."""
         cur = self.conn.cursor()
-        cur.execute("""
+        cur.execute(self._q("""
             SELECT CodInsumo, Precio1
             FROM PrecioParticularInsumo
             WHERE CodPresupuesto = %s
-        """, (cod_presupuesto,))
+        """), (cod_presupuesto,))
         return {
             (r[0] or '').strip(): _num_o_default(r[1])
             for r in cur.fetchall()

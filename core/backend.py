@@ -578,6 +578,8 @@ def _leer_filelist_odbc(conn, path_backup: str) -> list[tuple[str, str]]:
     try:
         cur.execute(f"RESTORE FILELISTONLY FROM DISK = N'{path_backup}'")
         rows = cur.fetchall()
+        while cur.nextset():
+            pass
     except Exception as e:
         msg = str(e)
         _check_backup_version_error(msg)
@@ -604,10 +606,31 @@ def _restore_database_odbc(conn, db_name: str, path_backup: str,
     cur = conn.cursor()
     try:
         cur.execute(sql)
+        # RESTORE produce múltiples result sets (mensajes informativos).
+        # Sin consumirlos, pyodbc retorna antes de que el RESTORE termine
+        # y cerrar la conexión aborta la operación.
+        while cur.nextset():
+            pass
     except Exception as e:
         msg = str(e)
         _check_backup_version_error(msg)
         raise BackendError(f"RESTORE DATABASE falló: {msg}") from e
+
+    # Verificar que la BD quedó ONLINE
+    cur.execute(
+        "SELECT state_desc FROM sys.databases WHERE name = ?", (db_name,)
+    )
+    row = cur.fetchone()
+    if row is None:
+        raise BackendError(
+            f"RESTORE no creó la base de datos '{db_name}'. "
+            "Revisá que el archivo de backup no esté corrupto."
+        )
+    if row[0] != 'ONLINE':
+        raise BackendError(
+            f"La base de datos '{db_name}' quedó en estado {row[0]} "
+            "tras el RESTORE. Puede que el backup esté dañado."
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
