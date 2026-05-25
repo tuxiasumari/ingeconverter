@@ -7,7 +7,8 @@ con el schema de IngePresupuestos.
 **Autor:** Ing. Marco Sumari Tellez
 **Iniciado:** 2026-05-22
 **Estado:** Fase 2 completada — empaquetado Linux+Windows, CI/CD, LocalDB backend,
-release v0.1.0 publicado en GitHub Actions. Próximo: probar `.exe` en Windows real.
+release v0.2.0 con instalador Windows que bundlea LocalDB + ODBC Driver 18.
+Próximo: Marco prueba `.exe` en Windows real (dual-boot).
 
 ---
 
@@ -401,20 +402,33 @@ venv/bin/pyinstaller ingeconverter.spec --noconfirm
 Tarball contiene: binario + `install.sh` + `README.txt` + `LICENSE.txt` + íconos.
 `install.sh` copia a `~/.local/bin/`, instala íconos hicolor, genera `.desktop`.
 
-### 4b. Empaquetado Windows ✅ (2026-05-23)
+### 4b. Empaquetado Windows ✅ (2026-05-23, mejorado 2026-05-24)
 
 **CI/CD:** `.github/workflows/build-windows.yml` — compila en `windows-latest`:
 - `ingeconverter-windows.zip` (portable)
-- `ingeconverter-setup-v0.1.0.exe` (Inno Setup, wizard español, EULA, per-user)
+- `ingeconverter-setup-vX.Y.Z.exe` (Inno Setup, wizard español, EULA)
+
+**Prerequisitos bundleados (sesión 2026-05-24):**
+- El workflow descarga `SqlLocalDB.msi` (~60 MB) y `msodbcsql18.msi` (~4.5 MB) de Microsoft
+- Inno Setup los bundlea dentro del `.exe` instalador
+- Al instalar, detecta si ya están presentes (SqlLocalDB.exe + registro ODBC) y solo instala lo que falta
+- Instalación silenciosa con `msiexec /qn` y aceptación automática de licencia
+- `PrivilegesRequired=admin` (necesario para los MSIs)
+- Si falla, muestra mensaje con links de descarga manual
+- URLs verificados: LocalDB `download.microsoft.com/...38de7036-2433-4207-8eae.../SqlLocalDB.msi`, ODBC 18 `go.microsoft.com/fwlink/?linkid=2249006`
 
 **Inno Setup:** `installer/ingeconverter.iss` con:
 - AppId GUID fijo `{A3B7E924-...}` (NO cambiar entre versiones)
-- `PrivilegesRequired=lowest` (per-user, sin UAC — LocalDB se instala aparte)
-- Detección automática onefile vs onedir de PyInstaller
+- Solo modo onefile (el .spec siempre genera onefile)
 - Idioma español, EULA de `LICENSE.txt`
 
 **`.spec` multiplataforma:** hidden imports condicionales (`pymssql` siempre,
 `pyodbc` solo en Windows). Onefile en ambas plataformas.
+
+**Instrucciones mejoradas (sesión 2026-05-24):**
+- Linux: comandos específicos por distro (Ubuntu/Fedora/Arch), separa "Docker sin permisos" vs "no instalado"
+- Windows: menciona que el instalador ya debería haber instalado LocalDB
+- macOS: instrucciones paso a paso para Docker Desktop
 
 ### 5. Bridge IngePresupuestos ↔ IngeConverter — UX descarga ✅ (2026-05-22)
 
@@ -435,15 +449,17 @@ Binarios en `github.com/tuxiasumari/ingeconverter/releases/tag/v0.1.0`.
 ### 7. Pendientes para v1.0
 
 **Inmediato:**
-- **Probar `.exe` en Windows real** — Marco tiene dual-boot. Instalar
-  LocalDB + driver ODBC, probar con un `.S2K`. Usar Claude Code en Windows
-  si hay bugs que corregir.
-- Subir binarios a R2: `downloads.ingepresupuestos.com/ingeconverter/v0.1.0/`
+- 🟡 **Probar `.exe` en Windows real** (2026-05-24) — Marco probará en dual-boot.
+  El instalador v0.2.0 ya bundlea LocalDB + ODBC Driver 18 (instalación automática).
+  Solo falta validar el flujo end-to-end: instalar → abrir → convertir .S2K real.
+- Subir binarios a R2: `downloads.ingepresupuestos.com/ingeconverter/v0.2.0/`
 - Armar la landing en `ingepresupuestos.com/descargas/ingeconverter`
+
+**Completado:**
+- ✅ **Bundlear LocalDB + ODBC Driver 18** en el instalador Windows (sesión 2026-05-24)
 
 **Futuro:**
 - **AppImage Linux** como alternativa al tarball
-- **Bundlear LocalDB MSI** dentro del instalador Windows (~340 MB total)
 
 ### 7. Limitaciones conocidas a comunicar al usuario
 - SQL 7.0/2000 (versión <611) no se puede migrar directo. El backend ya lanza
