@@ -37,8 +37,24 @@ jobs:
         shell: bash
         run: |
           ls -la dist/
-          # En Windows el spec genera un solo .exe (onefile)
           ls -lh dist/ingeconverter.exe 2>/dev/null || ls -lh dist/ingeconverter/ 2>/dev/null
+
+      - name: Descargar prerequisitos (LocalDB + ODBC Driver 18)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path installer\prereqs | Out-Null
+
+          # SQL Server 2022 Express LocalDB (~60 MB)
+          $localdbUrl = "https://download.microsoft.com/download/3/8/d/38de7036-2433-4a70-8abf-5571e8b9b5e5/SqlLocalDB.msi"
+          Write-Host "Descargando SqlLocalDB.msi..."
+          Invoke-WebRequest -Uri $localdbUrl -OutFile installer\prereqs\SqlLocalDB.msi -UseBasicParsing
+          Write-Host "SqlLocalDB.msi: $((Get-Item installer\prereqs\SqlLocalDB.msi).Length / 1MB) MB"
+
+          # ODBC Driver 18 for SQL Server x64 (~18 MB)
+          $odbcUrl = "https://go.microsoft.com/fwlink/?linkid=2266339"
+          Write-Host "Descargando msodbcsql18.msi..."
+          Invoke-WebRequest -Uri $odbcUrl -OutFile installer\prereqs\msodbcsql18.msi -UseBasicParsing
+          Write-Host "msodbcsql18.msi: $((Get-Item installer\prereqs\msodbcsql18.msi).Length / 1MB) MB"
 
       - name: Incluir README en el bundle
         shell: bash
@@ -54,7 +70,7 @@ jobs:
           === Requisitos ===
 
           1. SQL Server LocalDB (se instala automaticamente con el instalador)
-          2. Driver ODBC de SQL Server (incluido con LocalDB)
+          2. Driver ODBC de SQL Server (se instala automaticamente con el instalador)
 
           === Modo portable (este .zip) ===
 
@@ -62,6 +78,9 @@ jobs:
           2. Doble click en ingeconverter.exe
           3. Si Windows muestra "Windows protegio tu PC":
              "Mas informacion" -> "Ejecutar de todas formas"
+
+          NOTA: en modo portable necesitas instalar LocalDB y ODBC Driver
+          manualmente. El instalador lo hace automaticamente.
 
           === Uso recomendado ===
 

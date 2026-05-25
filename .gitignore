@@ -28,3 +28,6 @@ Thumbs.db
 
 # Metadata local de Claude Code (no se versiona)
 .claude/
+
+# MSIs de prerequisitos (se descargan en CI, no se commitean)
+installer/prereqs/*.msi
