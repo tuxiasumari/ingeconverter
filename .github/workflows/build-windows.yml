@@ -45,13 +45,14 @@ jobs:
           New-Item -ItemType Directory -Force -Path installer\prereqs | Out-Null
 
           # SQL Server 2022 Express LocalDB (~60 MB)
-          $localdbUrl = "https://download.microsoft.com/download/3/8/d/38de7036-2433-4a70-8abf-5571e8b9b5e5/SqlLocalDB.msi"
+          $localdbUrl = "https://download.microsoft.com/download/3/8/d/38de7036-2433-4207-8eae-06e247e17b25/SqlLocalDB.msi"
           Write-Host "Descargando SqlLocalDB.msi..."
           Invoke-WebRequest -Uri $localdbUrl -OutFile installer\prereqs\SqlLocalDB.msi -UseBasicParsing
           Write-Host "SqlLocalDB.msi: $((Get-Item installer\prereqs\SqlLocalDB.msi).Length / 1MB) MB"
 
-          # ODBC Driver 18 for SQL Server x64 (~18 MB)
-          $odbcUrl = "https://go.microsoft.com/fwlink/?linkid=2266339"
+          # ODBC Driver 18 for SQL Server x64 (~4.5 MB)
+          # go.microsoft.com/fwlink/?linkid=2249006 redirige al MSI estable
+          $odbcUrl = "https://go.microsoft.com/fwlink/?linkid=2249006"
           Write-Host "Descargando msodbcsql18.msi..."
           Invoke-WebRequest -Uri $odbcUrl -OutFile installer\prereqs\msodbcsql18.msi -UseBasicParsing
           Write-Host "msodbcsql18.msi: $((Get-Item installer\prereqs\msodbcsql18.msi).Length / 1MB) MB"
