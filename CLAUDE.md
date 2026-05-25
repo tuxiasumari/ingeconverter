@@ -7,12 +7,12 @@ con el schema de IngePresupuestos.
 **Autor:** Ing. Marco Sumari Tellez
 **Iniciado:** 2026-05-22
 **Estado:** Fase 2 completada — empaquetado Linux+Windows, CI/CD, LocalDB backend,
-release v0.2.0 con instalador Windows que bundlea LocalDB + ODBC Driver 18.
-Próximo: Marco prueba `.exe` en Windows real (dual-boot).
+release v0.2.1 con instalador Windows que bundlea LocalDB + ODBC Driver 18.
+Windows probado OK en máquina real (2026-05-24).
 
 ---
 
-## Estado funcional (2026-05-23 — Fase 0 ✅ + Fase 2 ✅)
+## Estado funcional (2026-05-24 — Fase 0 ✅ + Fase 2 ✅)
 
 - 3 módulos completos en `core/`: `s10_reader.py` + `sqlite_writer.py` + `convertir.py`
 - CLI con flags `--listar`, `--presupuesto`, `--subpresupuesto`, `--todos`, `--out`
@@ -200,9 +200,9 @@ Sin esta corrección el parcial sale 100× menor (0.14 en vez de 14.26).
 
 ---
 
-## Bugs encontrados y resueltos en Fase 0
+## Bugs encontrados y resueltos
 
-(Todos en `docs/ROADMAP.md` con detalle técnico)
+(1-9 en `docs/ROADMAP.md` con detalle técnico; 10-11 descubiertos en test Windows real)
 
 1. **mtftar no necesario** → SQL Server 2022 lee el .bkf nativo vía `RESTORE FROM DISK`
 2. **Wildcards 999 contaminan títulos** ("REGISTRO RESTRINGIDO") → agregar `NOT LIKE '999%'`
@@ -216,6 +216,18 @@ Sin esta corrección el parcial sale 100× menor (0.14 en vez de 14.26).
    (0.03), IngePresupuestos espera porcentaje entero (3.0). Fix: multiplicar
    ×100 al exportar cuando `unidad LIKE '%...'`, dejar `acu_items.precio=NULL`
    y `recursos.precio=0`. Detalle en sección "Schema #11" arriba.
+10. **RESTORE abortado silenciosamente en Windows** (2026-05-24) — pyodbc retorna
+    de `cur.execute()` tras procesar solo el primer result set del RESTORE, antes
+    de que la operación termine. Al cerrar la conexión, el RESTORE se aborta y
+    la BD `s10_conv` nunca se crea → error 4060/18456 al conectar. Fix:
+    consumir todos los result sets con `while cur.nextset(): pass` después del
+    execute en `_restore_database_odbc` y `_leer_filelist_odbc`. También se
+    agregó verificación post-RESTORE contra `sys.databases` para detectar
+    fallos silenciosos.
+11. **Placeholders SQL incompatibles en Windows** (2026-05-24) — `S10Reader`
+    usaba `%s` (paramstyle de pymssql) en todas las queries. pyodbc espera `?`.
+    Fix: `S10Reader.__init__` detecta el tipo de conexión y `_q()` convierte
+    `%s` → `?` automáticamente. Ambos backends funcionan transparente.
 
 ---
 
@@ -339,7 +351,7 @@ docker start mssql-s10   # los datos persisten en el volumen mssql-s10-data
   - `limpiar()` hace `DROP DATABASE` pero deja el container vivo (reuso)
   - Detecta SQL Server <2005 → lanza `BackupVersionTooOld` user-facing
 
-- `LocalDBBackend` (Windows) — **implementación completa** (2026-05-23):
+- `LocalDBBackend` (Windows) — **funcional end-to-end** (2026-05-23, bugs fijados 2026-05-24):
   - Conexión vía `pyodbc` + `Trusted_Connection=yes` (pymssql/FreeTDS no
     soporta bien named pipes de LocalDB)
   - Auto-detección de driver ODBC (18 preferido → 17 → 13 fallback)
@@ -350,7 +362,7 @@ docker start mssql-s10   # los datos persisten en el volumen mssql-s10-data
     (variantes pyodbc con autocommit en conexión, no cursor)
   - `limpiar()`: `DROP DATABASE` con `SINGLE_USER WITH ROLLBACK IMMEDIATE`
   - Instrucciones user-facing si falta LocalDB o driver ODBC
-  - **NO probada en Windows real** — pendiente test en dual-boot de Marco
+  - **Probada OK en Windows real** (2026-05-24) — ver bugs #10 y #11 abajo
 
 - Factory `crear_backend()` despacha según `sys.platform`.
 - Helpers compartidos: `_check_backup_version_error()` extraída para DRY.
@@ -441,21 +453,24 @@ descarga" → `QDesktopServices.openUrl()`. `DOWNLOAD_URL` apunta a
 `release.sh X.Y.Z` — valida semver/rama/tag, crea tag `vX.Y.Z`, push a
 origin → GitHub Actions compila Linux + Windows automáticamente.
 
-### 6. Release v0.1.0 publicado ✅ (2026-05-23)
+### 6. Releases publicados ✅
 
-Tag `v0.1.0` pusheado → GitHub Actions compilando Linux + Windows.
-Binarios en `github.com/tuxiasumari/ingeconverter/releases/tag/v0.1.0`.
+- `v0.1.0` (2026-05-23) — primer release funcional (Linux + Windows)
+- `v0.2.0` (2026-05-24) — instalador Windows con LocalDB + ODBC Driver 18 bundleados
+- `v0.2.1` (2026-05-24) — fix bugs #10 y #11 (RESTORE pyodbc + placeholders SQL)
+
+Binarios en `github.com/tuxiasumari/ingeconverter/releases/`.
 
 ### 7. Pendientes para v1.0
 
 **Inmediato:**
-- 🟡 **Probar `.exe` en Windows real** (2026-05-24) — Marco probará en dual-boot.
-  El instalador v0.2.0 ya bundlea LocalDB + ODBC Driver 18 (instalación automática).
-  Solo falta validar el flujo end-to-end: instalar → abrir → convertir .S2K real.
-- Subir binarios a R2: `downloads.ingepresupuestos.com/ingeconverter/v0.2.0/`
+- Subir binarios a R2: `downloads.ingepresupuestos.com/ingeconverter/v0.2.1/`
 - Armar la landing en `ingepresupuestos.com/descargas/ingeconverter`
 
 **Completado:**
+- ✅ **Probar `.exe` en Windows real** (2026-05-24) — flujo end-to-end validado.
+  Bugs #10 (RESTORE abortado) y #11 (placeholders `%s` vs `?`) encontrados y
+  resueltos. Release v0.2.1 funcional.
 - ✅ **Bundlear LocalDB + ODBC Driver 18** en el instalador Windows (sesión 2026-05-24)
 
 **Futuro:**
@@ -478,7 +493,10 @@ Binarios en `github.com/tuxiasumari/ingeconverter/releases/tag/v0.1.0`.
 2. **pymssql** para Docker (Linux/Mac), **pyodbc** para LocalDB (Windows).
    pymssql no soporta named pipes de LocalDB; pyodbc con
    `Trusted_Connection=yes` sí. En el spec, `pyodbc` es hidden import
-   condicional solo en Windows.
+   condicional solo en Windows. `S10Reader._q()` convierte placeholders
+   `%s` (pymssql) → `?` (pyodbc) automáticamente según el tipo de conexión.
+   **Siempre consumir result sets** con `while cur.nextset(): pass` después
+   de RESTORE en pyodbc — sin esto, cerrar la conexión aborta la operación.
 
 3. **Output `.db` SQLite con schema completo de IngePresupuestos** (no solo las
    tablas con datos). El importer espera ~25 tablas — algunas pueden estar
