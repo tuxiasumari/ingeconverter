@@ -81,7 +81,7 @@ def convertir_subpresupuesto(
     Returns:
         Stats dict: {partidas, titulos, acu_items}
     """
-    log.info(f"  → Convirtiendo subpresupuesto {cod_subpresupuesto} ({nombre_sub})"
+    log.info(f"  Convirtiendo subpresupuesto {cod_subpresupuesto} ({nombre_sub})"
              + (" [principal]" if es_principal else ""))
 
     # 1. Crear sub_presupuesto en SQLite (salvo el principal — ese vive como tab
@@ -203,8 +203,8 @@ def convertir_subpresupuesto(
                 )
                 stats['acu_items'] += 1
 
-    log.info(f"     ✓ {stats['titulos']} títulos · {stats['partidas']} partidas "
-             f"· {stats['acu_items']} ACU items")
+    log.info(f"     OK: {stats['titulos']} titulos, {stats['partidas']} partidas, "
+             f"{stats['acu_items']} ACU items")
     return stats
 
 
@@ -373,7 +373,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 1
 
         archivo = Path(args.archivo)
-        print(f"Restaurando {archivo.name}…", file=sys.stderr)
+        print(f"Restaurando {archivo.name}...", file=sys.stderr)
         try:
             db_name = backend.restaurar(archivo)
         except BackupVersionTooOld as e:
@@ -391,7 +391,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 1
     else:
         # Modo dev: conexión directa a una BD ya restaurada
-        log.info(f"Conectando a {args.server}:{args.port} / {args.database}…")
+        log.info(f"Conectando a {args.server}:{args.port} / {args.database}...")
         try:
             conn = conectar_sql(
                 args.server, args.port, args.database, args.user, args.password,
@@ -453,17 +453,17 @@ def _ejecutar_conversion(args, reader: S10Reader) -> int:
                     stats = convertir_proyecto(reader, writer, cod, None)
                 resumen.append((cod, desc, filename, stats))
             except Exception as e:
-                print(f"   ✗ Error: {e}", file=sys.stderr)
+                print(f"   [X] Error: {e}", file=sys.stderr)
                 resumen.append((cod, desc, None, None))
 
         print(f"\n{'=' * 70}\nRESUMEN\n{'=' * 70}")
         for cod, desc, fname, stats in resumen:
             if stats is None:
-                print(f"  ✗ {cod}  {desc[:60]} — FALLÓ")
+                print(f"  [X] {cod}  {desc[:60]} - FALLO")
             else:
-                print(f"  ✓ {cod}  ({stats['subpresupuestos']} sub · "
-                      f"{stats['titulos']+stats['partidas']} partidas · "
-                      f"{stats['acu_items']} acu) → {fname.name}")
+                print(f"  [OK] {cod}  ({stats['subpresupuestos']} sub, "
+                      f"{stats['titulos']+stats['partidas']} partidas, "
+                      f"{stats['acu_items']} acu) -> {fname.name}")
         return 0
 
     if not args.presupuesto:
@@ -471,14 +471,14 @@ def _ejecutar_conversion(args, reader: S10Reader) -> int:
               file=sys.stderr)
         return 1
 
-    log.info(f"Generando {args.out}…")
+    log.info(f"Generando {args.out}...")
     with SQLiteWriter(args.out, fresh=True) as writer:
         stats = convertir_proyecto(
             reader, writer,
             args.presupuesto, args.subpresupuesto,
         )
 
-    print(f"\n✓ Conversión completa: {args.out}")
+    print(f"\n[OK] Conversion completa: {args.out}")
     print(f"  Subpresupuestos: {stats['subpresupuestos']}")
     print(f"  Títulos        : {stats['titulos']}")
     print(f"  Partidas       : {stats['partidas']}")
