@@ -71,8 +71,8 @@ Name: "desktopicon"; Description: "Crear acceso directo en el {cm:CreateDesktopI
 
 
 [Files]
-; PyInstaller genera un solo .exe (onefile).
-Source: "..\dist\ingeconverter.exe"; DestDir: "{app}"; Flags: ignoreversion
+; PyInstaller genera una carpeta (onedir) en Windows.
+Source: "..\dist\ingeconverter\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Prerequisitos bundleados (descargados en GitHub Actions).
 Source: "prereqs\SqlLocalDB.msi"; DestDir: "{tmp}"; Flags: ignoreversion deleteafterinstall
@@ -199,3 +199,4 @@ end;
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\__pycache__"
+Type: filesandordirs; Name: "{app}\_internal"

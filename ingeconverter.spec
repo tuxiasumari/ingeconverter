@@ -6,7 +6,7 @@ Build:
     Windows: pyinstaller ingeconverter.spec --noconfirm
 
 Linux → binario standalone onefile (~72 MB), requiere Docker.
-Windows → binario standalone onefile, requiere LocalDB + driver ODBC.
+Windows → carpeta onedir (evita warning _MEI de cleanup), requiere LocalDB + ODBC.
 """
 import sys
 
@@ -34,24 +34,56 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.datas,
-    [],
-    name='ingeconverter',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon='resources/icons/ingeconverter.ico',
-)
+if _is_windows:
+    # Windows: onedir — no _MEI temp extraction, no cleanup warning.
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        name='ingeconverter',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        icon='resources/icons/ingeconverter.ico',
+    )
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.datas,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        name='ingeconverter',
+    )
+else:
+    # Linux/macOS: onefile — binario único, más simple para distribución.
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.datas,
+        [],
+        name='ingeconverter',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        icon='resources/icons/ingeconverter.ico',
+    )

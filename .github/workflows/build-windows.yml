@@ -60,8 +60,8 @@ jobs:
       - name: Incluir README en el bundle
         shell: bash
         run: |
-          mkdir -p dist/ingeconverter-win
-          cp dist/ingeconverter.exe dist/ingeconverter-win/ 2>/dev/null || cp -r dist/ingeconverter/* dist/ingeconverter-win/ 2>/dev/null
+          # onedir: dist/ingeconverter/ ya contiene ingeconverter.exe + _internal/
+          cp -r dist/ingeconverter dist/ingeconverter-win
           cat > dist/ingeconverter-win/LEEME.txt <<'EOF'
           IngeConverter para Windows
 
