@@ -126,11 +126,32 @@ begin
               'ODBC Driver 17 for SQL Server');
 end;
 
+procedure FixNVMeSectorSize;
+var
+  ResultCode: Integer;
+begin
+  // SSDs NVMe modernos reportan sectores >4KB en Windows 11.
+  // SQL Server no soporta eso y crashea con EXCEPTION_STACK_OVERFLOW.
+  // Fix: forzar emulacion de 4KB via registro.
+  if not RegValueExists(HKEY_LOCAL_MACHINE,
+       'SYSTEM\CurrentControlSet\Services\stornvme\Parameters\Device',
+       'ForcedPhysicalSectorSizeInBytes') then
+  begin
+    Exec('reg.exe',
+         'add "HKLM\SYSTEM\CurrentControlSet\Services\stornvme\Parameters\Device" ' +
+         '/v ForcedPhysicalSectorSizeInBytes /t REG_MULTI_SZ /d "* 4095" /f',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
 procedure InstallPrerequisites;
 var
   ResultCode: Integer;
   StatusText: String;
 begin
+  // Fix NVMe sector size ANTES de instalar LocalDB
+  FixNVMeSectorSize;
+
   // Instalar LocalDB si no esta presente
   if not IsLocalDBInstalled then
   begin
