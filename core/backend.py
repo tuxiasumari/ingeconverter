@@ -416,18 +416,99 @@ class LocalDBBackend(SQLServerBackend):
         driver = self._find_odbc_driver()
         if not driver:
             raise BackendError(
-                "No se encontró un driver ODBC de SQL Server.\n"
-                "Descárgalo de:\n"
+                "No se encontro un driver ODBC de SQL Server.\n"
+                "Descargalo de:\n"
                 "   https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server\n"
                 "   (busca 'ODBC Driver 18 for SQL Server')"
             )
 
         localdb_exe = shutil.which('SqlLocalDB.exe') or 'SqlLocalDB.exe'
-        log.info("Iniciando instancia LocalDB…")
-        subprocess.run([localdb_exe, 'start', 'MSSQLLocalDB'],
+
+        if not self._iniciar_instancia(localdb_exe):
+            log.info("Primer intento de start fallo, intentando reparar instancia...")
+            self._reparar_instancia(localdb_exe)
+
+        self._resolver_data_dir(localdb_exe)
+        self._esperar_sql_listo()
+
+    def _iniciar_instancia(self, localdb_exe: str) -> bool:
+        """Crea (si no existe) e inicia la instancia MSSQLLocalDB.
+        Retorna True si el start fue exitoso."""
+        subprocess.run(
+            [localdb_exe, 'create', 'MSSQLLocalDB'],
+            check=False, capture_output=True, text=True,
+        )
+        r = subprocess.run(
+            [localdb_exe, 'start', 'MSSQLLocalDB'],
+            check=False, capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            return True
+        out = (r.stdout or '') + (r.stderr or '')
+        log.warning(f"SqlLocalDB start fallo ({r.returncode}): {out.strip()}")
+        return False
+
+    def _reparar_instancia(self, localdb_exe: str) -> None:
+        """Elimina la instancia corrupta, limpia archivos residuales y recrea.
+        Ocurre cuando se desinstala y reinstala LocalDB (los archivos .mdf/.ldf
+        del instance anterior quedan y corrompen el arranque)."""
+        log.info("Deteniendo instancia...")
+        subprocess.run([localdb_exe, 'stop', 'MSSQLLocalDB'],
+                       check=False, capture_output=True)
+        log.info("Eliminando instancia corrupta...")
+        subprocess.run([localdb_exe, 'delete', 'MSSQLLocalDB'],
                        check=False, capture_output=True)
 
-        # Obtener el directorio de datos de la instancia para el RESTORE MOVE
+        # Limpiar archivos residuales del instance anterior
+        local_app = os.environ.get('LOCALAPPDATA', '')
+        if local_app:
+            instance_dir = os.path.join(
+                local_app,
+                'Microsoft', 'Microsoft SQL Server Local DB', 'Instances',
+                'MSSQLLocalDB',
+            )
+            if os.path.isdir(instance_dir):
+                log.info(f"Limpiando directorio residual: {instance_dir}")
+                try:
+                    shutil.rmtree(instance_dir, ignore_errors=True)
+                except Exception as e:
+                    log.warning(f"No se pudo limpiar {instance_dir}: {e}")
+
+        log.info("Recreando instancia MSSQLLocalDB...")
+        r_create = subprocess.run(
+            [localdb_exe, 'create', 'MSSQLLocalDB'],
+            check=False, capture_output=True, text=True,
+        )
+        if r_create.returncode != 0:
+            out = (r_create.stdout or '') + (r_create.stderr or '')
+            log.warning(f"Recrear instancia retorno {r_create.returncode}: {out.strip()}")
+
+        log.info("Iniciando instancia reparada...")
+        r_start = subprocess.run(
+            [localdb_exe, 'start', 'MSSQLLocalDB'],
+            check=False, capture_output=True, text=True,
+        )
+        if r_start.returncode != 0:
+            out = (r_start.stdout or '') + (r_start.stderr or '')
+            nvme_hint = ""
+            if 'no se pudo iniciar' in out.lower() or 'cannot start' in out.lower():
+                nvme_hint = (
+                    "\n\nSi tu laptop tiene disco NVMe, abre PowerShell como "
+                    "Administrador y ejecuta:\n"
+                    '  New-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet'
+                    '\\Services\\stornvme\\Parameters\\Device" '
+                    '-Name "ForcedPhysicalSectorSizeInBytes" '
+                    '-PropertyType MultiString -Force -Value "* 4095"\n'
+                    "Luego reinicia Windows e intenta de nuevo."
+                )
+            raise BackendError(
+                f"LocalDB no pudo iniciar despues de reparar la instancia.\n"
+                f"Error: {out.strip()}"
+                f"{nvme_hint}"
+            )
+
+    def _resolver_data_dir(self, localdb_exe: str) -> None:
+        """Resuelve el directorio de datos de la instancia para RESTORE MOVE."""
         r = subprocess.run(
             [localdb_exe, 'info', 'MSSQLLocalDB'],
             capture_output=True, text=True, check=False,
@@ -435,13 +516,10 @@ class LocalDBBackend(SQLServerBackend):
         self._data_dir = None
         if r.returncode == 0:
             for line in r.stdout.splitlines():
-                # Buscar línea que contiene el path de la instancia
                 if 'instance pipe name' in line.lower():
                     continue
                 stripped = line.strip()
                 if '\\' in stripped and ('AppData' in stripped or 'MSSQL' in stripped):
-                    # Ejemplo: "C:\Users\Marco\AppData\Local\Microsoft\..."
-                    # No usamos esto directamente, calculamos desde LOCALAPPDATA
                     break
 
         if not self._data_dir:
@@ -456,9 +534,6 @@ class LocalDBBackend(SQLServerBackend):
                     self._data_dir = candidate
             if not self._data_dir:
                 self._data_dir = tempfile.gettempdir()
-
-        # Verificar que la instancia responde
-        self._esperar_sql_listo()
 
     def _esperar_sql_listo(self, timeout: int = 30) -> None:
         deadline = time.time() + timeout
