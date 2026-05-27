@@ -424,12 +424,19 @@ class LocalDBBackend(SQLServerBackend):
 
         localdb_exe = shutil.which('SqlLocalDB.exe') or 'SqlLocalDB.exe'
 
-        if not self._iniciar_instancia(localdb_exe):
-            log.info("Primer intento de start fallo, intentando reparar instancia...")
-            self._reparar_instancia(localdb_exe)
-
+        self._iniciar_instancia(localdb_exe)
         self._resolver_data_dir(localdb_exe)
-        self._esperar_sql_listo()
+
+        try:
+            self._esperar_sql_listo(timeout=90)
+            return
+        except BackendError:
+            pass
+
+        log.info("LocalDB no responde tras 90s, intentando reparar instancia...")
+        self._reparar_instancia(localdb_exe)
+        self._resolver_data_dir(localdb_exe)
+        self._esperar_sql_listo(timeout=90)
 
     def _iniciar_instancia(self, localdb_exe: str) -> bool:
         """Crea (si no existe) e inicia la instancia MSSQLLocalDB.
@@ -535,7 +542,7 @@ class LocalDBBackend(SQLServerBackend):
             if not self._data_dir:
                 self._data_dir = tempfile.gettempdir()
 
-    def _esperar_sql_listo(self, timeout: int = 30) -> None:
+    def _esperar_sql_listo(self, timeout: int = 90) -> None:
         deadline = time.time() + timeout
         ultimo_error = ''
         while time.time() < deadline:
@@ -548,7 +555,7 @@ class LocalDBBackend(SQLServerBackend):
                 return
             except Exception as e:
                 ultimo_error = str(e)
-                time.sleep(1)
+                time.sleep(2)
         raise BackendError(
             f"LocalDB no respondió en {timeout}s. Último error:\n{ultimo_error}"
         )
