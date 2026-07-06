@@ -1,34 +1,45 @@
+<!--
+SPDX-License-Identifier: GPL-3.0-or-later
+Copyright (C) 2026 Marco Sumari / Sumari SAC
+-->
+
 # IngeConverter
 
-Convertidor de bases de datos de S10 (`.S2K`, `.bak`, `.bkf`) a formato `.db` SQLite
-de **IngePresupuestos**.
+**Complemento libre** de [IngePresupuestos](https://github.com/tuxiasumari/ingepresupuestos) que convierte bases de datos de **S10** (`.S2K`, `.bak`, `.bkf`) al formato `.db` SQLite de IngePresupuestos.
 
-Producto satélite de IngePresupuestos. Funciona como wizard standalone que:
+**Autor:** Ing. Marco Sumari · **Licencia:** [GPL-3.0-or-later](LICENSE) — software libre ✊
 
-1. Detecta o asiste a instalar **Microsoft SQL Server LocalDB** (~140 MB).
-2. Restaura o attachea el archivo S10 sobre LocalDB.
-3. Lee las tablas de S10 vía ODBC.
+## Cómo funciona
+
+Wizard standalone que:
+
+1. Detecta / asiste a instalar el motor de SQL Server (LocalDB en Windows, contenedor Docker en Linux).
+2. Restaura o attachea el archivo de S10.
+3. Lee las tablas de S10 vía ODBC/pymssql.
 4. Mapea a la estructura SQLite de IngePresupuestos.
-5. Genera un archivo `.db` que IngePresupuestos puede abrir directamente
-   (ya soportado vía `core/ingepresupuestos_db_importer.py`).
+5. Genera un `.db` que IngePresupuestos abre directamente.
 
 ## ¿Por qué un producto separado?
 
-- **IngePresupuestos** queda liviano, multiplataforma, sin dependencia de SQL Server.
-- **IngeConverter** es Windows-only (todos los usuarios de S10 ya están en Windows).
-- Si IngeConverter se rompe por un cambio futuro de S10, IngePresupuestos sigue
-  funcionando perfecto. Acople bajo intencional.
-- La frontera entre los dos productos es **un archivo `.db` SQLite con el schema
-  de IngePresupuestos**. Limpia y estable.
+- **IngePresupuestos** queda liviano y multiplataforma, sin dependencia de SQL Server.
+- **IngeConverter** aísla la dependencia pesada (SQL Server) que S10 necesita.
+- Si S10 cambia y esto se rompe, IngePresupuestos sigue funcionando. Acople bajo intencional.
+- La frontera entre ambos es **un `.db` SQLite** con el schema de IngePresupuestos. Limpia y estable.
 
 ## Plataforma
 
-- **Windows-only** (Microsoft SQL Server LocalDB no existe en Linux/Mac).
-- Python 3.10+ · PySide6 · pyodbc.
+- **Windows** — Microsoft SQL Server **LocalDB** (~140 MB).
+- **Linux** — **SQL Server en Docker** (contenedor local efímero solo para la conversión).
+- Python 3.10+ · PySide6 · pyodbc / pymssql.
+
+> Nota: la contraseña `IngeConv2026!` que verás en el código es la de un contenedor SQL Server **local y efímero** en tu propia máquina — no es un secreto (no hay servidor remoto).
 
 ## Estado
 
-🚧 **Esqueleto inicial — sesión 2026-05-22.** No funcional aún. Se va construyendo
-con cada migración real que aparezca de los amigos beta. Ver `docs/ROADMAP.md`.
+Funcional contra archivos `.S2K` reales de S10 (validado 1:1). En evolución con cada base real que aparece. Ver `docs/`.
 
-Autor: Ing. Marco Sumari Tellez
+## Licencia
+
+Distribuido bajo la **Licencia Pública General de GNU v3.0 o posterior (GPL-3.0-or-later)**. Ver [LICENSE](LICENSE).
+
+© 2026 Marco Sumari · Sumari SAC
